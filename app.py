@@ -11,6 +11,9 @@ from langchain_core.output_parsers import StrOutputParser
 
 st.set_page_config(page_title="Assistente Virtual AEPG", page_icon="🏫", layout="centered")
 
+if os.path.exists("LogoAEPG.png"): # Substitui pelo nome real do teu ficheiro
+    st.sidebar.image(LogoAEPG.png", use_container_width=True)
+
 lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
 t = "Assistente Virtual - AE Paulo da Gama" if lang == "Português" else "AEPG Assistant"
 st.title(t)
