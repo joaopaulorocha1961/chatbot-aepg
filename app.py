@@ -30,6 +30,15 @@ pdf_files = [
     "Código de Conduta dos trabalhadores AEPG.pdf",
     "Politica de utilização saudavel do digital.pdf",
     "Calendario 25_26 NOVO.pdf"
+    "Cargos_funções 25.26"
+    "ESTRATEGIA_CIDADANIA_AEPG-25-26"
+    "Linhas Orientadoras do Orçamento 2026_signed"
+    "Linhas_Orientadoras_ASE_2025_2029_signed (1)"
+    "PAA dezembro_25_signed"
+    "Regimento Conselho Geral 25-29_final_signed"
+    "Regulamento Interno AEPG"
+    "Regulamento Sala Led - AEPG"
+    "Regulamento_Eleitorial_OPE_2026_signed"    
 ]
 
 @st.cache_resource
