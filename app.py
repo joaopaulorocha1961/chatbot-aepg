@@ -44,7 +44,7 @@ def setup_knowledge_base():
             continue
     
     # Divide o texto em pedaços para evitar o erro 429 (Rate Limit)
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=250)
     docs_chunks = text_splitter.split_documents(all_docs)
     
     try:
