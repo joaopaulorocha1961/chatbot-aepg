@@ -5,3 +5,4 @@ langchain-openai
 pypdf
 faiss-cpu
 beautifulsoup4
+tiktoken
