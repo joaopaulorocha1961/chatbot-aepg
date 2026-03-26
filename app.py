@@ -1,46 +1,27 @@
 import streamlit as st
 import os
+import time
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# 1. Configuração da Página
 st.set_page_config(page_title="Assistente Virtual AEPG", page_icon="🏫", layout="centered")
 
-# 2. Seletor de Idioma na Barra Lateral
 lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
-
-if lang == "Português":
-    t = "Assistente Virtual - AE Paulo da Gama"
-    info_msg = "Documentos oficiais carregados com sucesso."
-    input_label = "Como posso ajudar?"
-    footer_text = "\n\n---\n*Para mais informações e notícias atualizadas, visite o site oficial do Agrupamento: [aepg.pt](https://aepg.pt/)*"
-    not_found_msg = "Nenhum ficheiro PDF encontrado no servidor."
-    api_error = "Erro: Configura a OPENAI_API_KEY nos Secrets do Streamlit."
-else:
-    t = "Virtual Assistant - AE Paulo da Gama"
-    info_msg = "Official documents loaded successfully."
-    input_label = "How can I help you?"
-    footer_text = "\n\n---\n*For more information and up-to-date news, please visit the official school website: [aepg.pt](https://aepg.pt/)*"
-    not_found_msg = "No PDF files found on the server."
-    api_error = "Error: Please configure the OPENAI_API_KEY in Streamlit Secrets."
-
+t = "Assistente Virtual - AE Paulo da Gama" if lang == "Português" else "AEPG Assistant"
 st.title(t)
 
-# 3. Verificação de Segurança (API Key)
 if "OPENAI_API_KEY" not in st.secrets:
-    st.error(api_error)
+    st.error("Configura a OPENAI_API_KEY nos Secrets.")
     st.stop()
 
-# 4. Carregamento e Processamento de Documentos
 @st.cache_resource
 def setup_knowledge_base():
-    # Deteta automaticamente todos os PDFs na raiz do projeto
     pdf_files = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
-    
     if not pdf_files:
         return None
     
@@ -51,13 +32,23 @@ def setup_knowledge_base():
             all_docs.extend(loader.load())
         except Exception:
             continue
-            
-    if not all_docs:
-        return None
-        
+    
+    # --- SOLUÇÃO PARA O ERRO 429: DIVIDIR O TEXTO ---
+    # Criamos pedaços de 1000 caracteres para não estourar o limite de tokens
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+    docs_chunks = text_splitter.split_documents(all_docs)
+    
     try:
         embeddings = OpenAIEmbeddings(api_key=st.secrets["OPENAI_API_KEY"])
-        vectorstore = FAISS.from_documents(all_docs, embeddings)
+        
+        # Criar a base de dados em pequenos lotes para evitar o erro de limite
+        vectorstore = FAISS.from_documents(docs_chunks[:50], embeddings) # Começa com os primeiros 50
+        
+        # Adiciona o resto aos poucos (se houver muitos documentos)
+        for i in range(50, len(docs_chunks), 50):
+            vectorstore.add_documents(docs_chunks[i:i+50])
+            time.sleep(1) # Pausa de 1 segundo para a OpenAI não bloquear
+            
         return vectorstore.as_retriever(search_kwargs={"k": 3})
     except Exception as e:
         st.error(f"Erro na OpenAI: {e}")
@@ -65,20 +56,17 @@ def setup_knowledge_base():
 
 retriever = setup_knowledge_base()
 
-# 5. Interface de Chat
 if retriever:
-    st.sidebar.success(info_msg)
+    st.sidebar.success("Documentos carregados!" if lang == "Português" else "Documents loaded!")
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # Mostrar histórico
     for m in st.session_state.messages:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    # Input do utilizador
-    if prompt := st.chat_input(input_label):
+    if prompt := st.chat_input("Pergunte algo..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -86,28 +74,16 @@ if retriever:
         with st.chat_message("assistant"):
             llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
             
-            # Template com instruções de rigor e bilingues
-            template = """És um assistente virtual do Agrupamento de Escolas Paulo da Gama. 
-            Utiliza estritamente o contexto abaixo para responder.
-            Se a resposta não estiver no contexto, diz que não encontras essa informação nos documentos oficiais.
-            Responde sempre em {language}.
-            
-            Contexto: {context}
-            Pergunta: {question}
-            """
+            footer = "\n\n---\n*Visite: [aepg.pt](https://aepg.pt/)*"
+            template = "És um assistente do AEPG. Responde em {language} usando: {context}. Pergunta: {question}"
             
             rag_prompt = ChatPromptTemplate.from_template(template)
-            
-            # Construção da Chain (Lógica do Bot)
-            chain = (
-                {"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang}
-                | rag_prompt | llm | StrOutputParser()
-            )
+            chain = ({"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang} 
+                     | rag_prompt | llm | StrOutputParser())
             
             response = chain.invoke(prompt)
-            full_response = response + footer_text
-            
-            st.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            full_res = response + footer
+            st.markdown(full_res)
+            st.session_state.messages.append({"role": "assistant", "content": full_res})
 else:
-    st.warning(not_found_msg)
+    st.warning("Nenhum PDF encontrado ou erro no processamento.")
