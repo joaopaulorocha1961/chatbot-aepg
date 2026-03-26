@@ -1,80 +1,92 @@
 import streamlit as st
 import os
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.chains import RetrievalQA
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 
-# --- CONFIGURAÇÃO DA INTERFACE ---
 st.set_page_config(page_title="Chatbot AEPG", page_icon="🏫")
 
-# Seletor de Idioma
+# --- TRADUÇÃO ---
 lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
-
 if lang == "Português":
-    title, info = "Assistente AE Paulo da Gama", "Pergunte sobre as regras e calendários."
-    input_text = "Escreva aqui a sua pergunta..."
+    t, label, info = "Assistente AE Paulo da Gama", "Pergunte algo...", "Documentos carregados com sucesso!"
 else:
-    title, info = "AEPG Virtual Assistant", "Ask about rules and calendars."
-    input_text = "Type your question here..."
+    t, label, info = "AEPG Assistant", "Ask something...", "Documents loaded successfully!"
 
-st.title(title)
-st.info(info)
+st.title(t)
 
-# --- CARREGAMENTO DOS DOCUMENTOS ---
-# Lista dos nomes exatos dos teus ficheiros no GitHub
-docs_files = [
-    "Calendario 25_26 NOVO.pdf",
+# --- VERIFICAÇÃO DE CHAVE ---
+if "OPENAI_API_KEY" not in st.secrets:
+    st.error("Erro: Configura a OPENAI_API_KEY nos Secrets do Streamlit.")
+    st.stop()
+
+# --- CARREGAMENTO DE DOCUMENTOS ---
+# Importante: Os nomes devem ser iguais aos ficheiros no GitHub
+pdf_files = [
+    "Projeto Educativo do Agrupamento.pdf",
     "Código de Conduta dos trabalhadores AEPG.pdf",
     "Politica de utilização saudavel do digital.pdf",
-    "Projeto Educativo do Agrupamento.pdf"
+    "Calendario 25_26 NOVO.pdf"
 ]
 
 @st.cache_resource
-def load_data():
-    documents = []
-    for file in docs_files:
-        if os.path.exists(file):
-            loader = PyPDFLoader(file)
-            documents.extend(loader.load())
+def setup_bot():
+    docs = []
+    for f in pdf_files:
+        if os.path.exists(f):
+            loader = PyPDFLoader(f)
+            docs.extend(loader.load())
     
-    # IMPORTANTE: Precisas da chave da OpenAI para isto funcionar
-    # Podes colocá-la nos "Secrets" do Streamlit Cloud
-    api_key = st.secrets.get("OPENAI_API_KEY")
-    if not api_key:
+    if not docs:
         return None
+        
+    embeddings = OpenAIEmbeddings(api_key=st.secrets["OPENAI_API_KEY"])
+    vectorstore = FAISS.from_documents(docs, embeddings)
+    return vectorstore.as_retriever()
 
-    embeddings = OpenAIEmbeddings(openai_api_key=api_key)
-    vectorstore = FAISS.from_documents(documents, embeddings)
-    return vectorstore
+retriever = setup_bot()
 
-vectorstore = load_data()
-
-if vectorstore is None:
-    st.warning("⚠️ Erro: Chave API em falta ou ficheiros não encontrados.")
-else:
-    # --- INTERFACE DE CHAT ---
+if retriever:
+    st.success(info)
+    
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+    for m in st.session_state.messages:
+        with st.chat_message(m["role"]):
+            st.markdown(m["content"])
 
-    if prompt := st.chat_input(input_text):
+    if prompt := st.chat_input(label):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            # Configura a IA para responder no idioma correto
-            qa = RetrievalQA.from_chain_type(
-                llm=ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=st.secrets["OPENAI_API_KEY"]),
-                chain_type="stuff",
-                retriever=vectorstore.as_retriever()
+            # Nova estrutura (Chain) sem usar RetrievalQA
+            llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"])
+            
+            template = """Responde à pergunta com base apenas no contexto fornecido. 
+            Se não souberes, diz que não encontraste no regulamento.
+            Responde sempre em {language}.
+            
+            Contexto: {context}
+            Pergunta: {question}
+            """
+            
+            rag_prompt = ChatPromptTemplate.from_template(template)
+            
+            chain = (
+                {"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang}
+                | rag_prompt
+                | llm
+                | StrOutputParser()
             )
             
-            context_prompt = f"Responda em {lang}. " + prompt
-            response = qa.run(context_prompt)
+            response = chain.invoke(prompt)
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
+else:
+    st.warning("⚠️ Ficheiros PDF não encontrados. Verifica se os nomes no código coincidem com o GitHub.")
