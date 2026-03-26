@@ -1,7 +1,6 @@
 
-    Aqui tens o código completo e consolidado. Este ficheiro app.py inclui a detecção automática de PDFs, a lógica bilingue, a nova estrutura da LangChain (sem o erro de importação) e o rodapé dinâmico com o link para o site do agrupamento.
 
-Ficheiro: app.py
+Fichiro: app.py
 Python
 import streamlit as st
 import os
