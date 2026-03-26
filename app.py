@@ -1,54 +1,80 @@
 import streamlit as st
+import os
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import RetrievalQA
 
-# 1. Configuração da Página
+# --- CONFIGURAÇÃO DA INTERFACE ---
 st.set_page_config(page_title="Chatbot AEPG", page_icon="🏫")
 
-# 2. Seletor de Idioma na Barra Lateral
-language = st.sidebar.selectbox("Language / Idioma", ["Português", "English"])
+# Seletor de Idioma
+lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
 
-if language == "Português":
-    st.title("Assistente Virtual - AE Paulo da Gama")
-    st.markdown("Pergunte-me sobre o **Regulamento, Calendário Escolar ou Projeto Educativo**.")
-    query_label = "Como posso ajudar?"
-    error_msg = "Por favor, insira uma pergunta."
+if lang == "Português":
+    title, info = "Assistente AE Paulo da Gama", "Pergunte sobre as regras e calendários."
+    input_text = "Escreva aqui a sua pergunta..."
 else:
-    st.title("Virtual Assistant - AE Paulo da Gama")
-    st.markdown("Ask me about **Regulations, School Calendar, or the Educational Project**.")
-    query_label = "How can I help you?"
-    error_msg = "Please enter a question."
+    title, info = "AEPG Virtual Assistant", "Ask about rules and calendars."
+    input_text = "Type your question here..."
 
-# 3. Lógica de IA (Resumo simplificado)
-# Nota: Para isto funcionar online, precisas de uma API Key da OpenAI
-# ou usar um modelo gratuito como o Llama via Groq.
-def get_response(user_query, lang):
-    # Aqui o código lê os teus PDFs (ex: "Projeto Educativo do Agrupamento.pdf")
-    # e gera uma resposta contextualizada.
-    # Se o idioma for English, instruímos o bot a traduzir a resposta.
-    system_prompt = "És um assistente do AEPG. Responde apenas com base nos documentos fornecidos."
-    if lang == "English":
-        system_prompt += " Answer always in English."
+st.title(title)
+st.info(info)
+
+# --- CARREGAMENTO DOS DOCUMENTOS ---
+# Lista dos nomes exatos dos teus ficheiros no GitHub
+docs_files = [
+    "Calendario 25_26 NOVO.pdf",
+    "Código de Conduta dos trabalhadores AEPG.pdf",
+    "Politica de utilização saudavel do digital.pdf",
+    "Projeto Educativo do Agrupamento.pdf"
+]
+
+@st.cache_resource
+def load_data():
+    documents = []
+    for file in docs_files:
+        if os.path.exists(file):
+            loader = PyPDFLoader(file)
+            documents.extend(loader.load())
     
-    # [Lógica de Recuperação de Documentos aqui]
-    return "Esta é uma resposta simulada baseada nos documentos do AEPG."
+    # IMPORTANTE: Precisas da chave da OpenAI para isto funcionar
+    # Podes colocá-la nos "Secrets" do Streamlit Cloud
+    api_key = st.secrets.get("OPENAI_API_KEY")
+    if not api_key:
+        return None
 
-# 4. Chat Interface
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    embeddings = OpenAIEmbeddings(openai_api_key=api_key)
+    vectorstore = FAISS.from_documents(documents, embeddings)
+    return vectorstore
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+vectorstore = load_data()
 
-if prompt := st.chat_input(query_label):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+if vectorstore is None:
+    st.warning("⚠️ Erro: Chave API em falta ou ficheiros não encontrados.")
+else:
+    # --- INTERFACE DE CHAT ---
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    with st.chat_message("assistant"):
-        response = get_response(prompt, language)
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    if prompt := st.chat_input(input_text):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            # Configura a IA para responder no idioma correto
+            qa = RetrievalQA.from_chain_type(
+                llm=ChatOpenAI(model_name="gpt-3.5-turbo", openai_api_key=st.secrets["OPENAI_API_KEY"]),
+                chain_type="stuff",
+                retriever=vectorstore.as_retriever()
+            )
+            
+            context_prompt = f"Responda em {lang}. " + prompt
+            response = qa.run(context_prompt)
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
