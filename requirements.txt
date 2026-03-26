@@ -1,6 +1,6 @@
-text
 streamlit
-openai
 langchain
+langchain-community
+langchain-openai
 pypdf
-chromadb
+faiss-cpu
