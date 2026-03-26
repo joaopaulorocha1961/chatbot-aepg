@@ -7,59 +7,49 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-st.set_page_config(page_title="Chatbot AEPG", page_icon="🏫")
+st.set_page_config(page_title="Chatbot AE Paulo da Gama", page_icon="🏫")
 
-# --- TRADUÇÃO ---
+# --- IDIOMA ---
 lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
-if lang == "Português":
-    t, label, info = "Assistente AE Paulo da Gama", "Pergunte algo...", "Documentos carregados com sucesso!"
-else:
-    t, label, info = "AEPG Assistant", "Ask something...", "Documents loaded successfully!"
-
+t = "Assistente AE Paulo da Gama" if lang == "Português" else "AEPG Assistant"
 st.title(t)
 
-# --- VERIFICAÇÃO DE CHAVE ---
+# --- SECRETS ---
 if "OPENAI_API_KEY" not in st.secrets:
-    st.error("Erro: Configura a OPENAI_API_KEY nos Secrets do Streamlit.")
+    st.error("Configura a OPENAI_API_KEY nos Secrets do Streamlit.")
     st.stop()
-
-# --- CARREGAMENTO DE DOCUMENTOS ---
-# Importante: Os nomes devem ser iguais aos ficheiros no GitHub
-pdf_files = [
-    "Projeto Educativo do Agrupamento.pdf",
-    "Código de Conduta dos trabalhadores AEPG.pdf",
-    "Politica de utilização saudavel do digital.pdf",
-    "Calendario 25_26 NOVO.pdf"
-    "Cargos_funções 25.26"
-    "ESTRATEGIA_CIDADANIA_AEPG-25-26"
-    "Linhas Orientadoras do Orçamento 2026_signed"
-    "Linhas_Orientadoras_ASE_2025_2029_signed (1)"
-    "PAA dezembro_25_signed"
-    "Regimento Conselho Geral 25-29_final_signed"
-    "Regulamento Interno AEPG"
-    "Regulamento Sala Led - AEPG"
-    "Regulamento_Eleitorial_OPE_2026_signed"    
-]
 
 @st.cache_resource
 def setup_bot():
-    docs = []
-    for f in pdf_files:
-        if os.path.exists(f):
-            loader = PyPDFLoader(f)
-            docs.extend(loader.load())
+    # Procura todos os ficheiros PDF na pasta principal
+    pdf_files = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
     
-    if not docs:
+    if not pdf_files:
+        return None
+    
+    all_docs = []
+    for f in pdf_files:
+        try:
+            loader = PyPDFLoader(f)
+            all_docs.extend(loader.load())
+        except Exception as e:
+            st.sidebar.warning(f"Erro ao ler {f}: {e}")
+            
+    if not all_docs:
         return None
         
     embeddings = OpenAIEmbeddings(api_key=st.secrets["OPENAI_API_KEY"])
-    vectorstore = FAISS.from_documents(docs, embeddings)
-    return vectorstore.as_retriever()
+    vectorstore = FAISS.from_documents(all_docs, embeddings)
+    return vectorstore.as_retriever(search_kwargs={"k": 3}), pdf_files
 
-retriever = setup_bot()
+# Inicialização
+result = setup_bot()
 
-if retriever:
-    st.success(info)
+if result:
+    retriever, loaded_files = result
+    st.sidebar.success(f"✅ {len(loaded_files)} documentos lidos.")
+    with st.sidebar.expander("Ver ficheiros"):
+        st.write(loaded_files)
     
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -68,34 +58,30 @@ if retriever:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    if prompt := st.chat_input(label):
+    if prompt := st.chat_input("Pergunte algo / Ask something..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            # Nova estrutura (Chain) sem usar RetrievalQA
-            llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"])
+            llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
             
-            template = """Responde à pergunta com base apenas no contexto fornecido. 
-            Se não souberes, diz que não encontraste no regulamento.
+            template = """És um assistente virtual do Agrupamento de Escolas Paulo da Gama. 
+            Responde com base no contexto. Se não souberes, diz que não encontras nos documentos.
             Responde sempre em {language}.
             
             Contexto: {context}
             Pergunta: {question}
             """
-            
             rag_prompt = ChatPromptTemplate.from_template(template)
             
             chain = (
                 {"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang}
-                | rag_prompt
-                | llm
-                | StrOutputParser()
+                | rag_prompt | llm | StrOutputParser()
             )
             
             response = chain.invoke(prompt)
             st.markdown(response)
             st.session_state.messages.append({"role": "assistant", "content": response})
 else:
-    st.warning("⚠️ Ficheiros PDF não encontrados. Verifica se os nomes no código coincidem com o GitHub.")
+    st.warning("⚠️ Nenhum ficheiro PDF encontrado no GitHub. Certifica-te de que os PDFs não estão dentro de pastas.")
