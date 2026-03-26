@@ -7,20 +7,30 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# CORREÇÃO: Importação atualizada para a nova versão da biblioteca
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 st.set_page_config(page_title="Assistente Virtual AEPG", page_icon="🏫", layout="centered")
 
+# Configuração de Idioma
 lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
-t = "Assistente Virtual - AE Paulo da Gama" if lang == "Português" else "AEPG Assistant"
+if lang == "Português":
+    t, input_l = "Assistente Virtual - AE Paulo da Gama", "Como posso ajudar?"
+    footer_msg = "\n\n---\n*Visite o site oficial: [aepg.pt](https://aepg.pt/)*"
+else:
+    t, input_l = "AEPG Virtual Assistant", "How can I help you?"
+    footer_msg = "\n\n---\n*Visit the official website: [aepg.pt](https://aepg.pt/)*"
+
 st.title(t)
 
 if "OPENAI_API_KEY" not in st.secrets:
-    st.error("Configura a OPENAI_API_KEY nos Secrets.")
+    st.error("Erro: Configura a OPENAI_API_KEY nos Secrets do Streamlit.")
     st.stop()
 
 @st.cache_resource
 def setup_knowledge_base():
+    # Deteta PDFs na raiz do GitHub
     pdf_files = [f for f in os.listdir('.') if f.lower().endswith('.pdf')]
     if not pdf_files:
         return None
@@ -33,21 +43,19 @@ def setup_knowledge_base():
         except Exception:
             continue
     
-    # --- SOLUÇÃO PARA O ERRO 429: DIVIDIR O TEXTO ---
-    # Criamos pedaços de 1000 caracteres para não estourar o limite de tokens
+    # Divide o texto em pedaços para evitar o erro 429 (Rate Limit)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs_chunks = text_splitter.split_documents(all_docs)
     
     try:
         embeddings = OpenAIEmbeddings(api_key=st.secrets["OPENAI_API_KEY"])
         
-        # Criar a base de dados em pequenos lotes para evitar o erro de limite
-        vectorstore = FAISS.from_documents(docs_chunks[:50], embeddings) # Começa com os primeiros 50
+        # Cria a base de dados em pequenos lotes com pausas
+        vectorstore = FAISS.from_documents(docs_chunks[:30], embeddings)
         
-        # Adiciona o resto aos poucos (se houver muitos documentos)
-        for i in range(50, len(docs_chunks), 50):
-            vectorstore.add_documents(docs_chunks[i:i+50])
-            time.sleep(1) # Pausa de 1 segundo para a OpenAI não bloquear
+        for i in range(30, len(docs_chunks), 30):
+            vectorstore.add_documents(docs_chunks[i:i+30])
+            time.sleep(1) # Pausa técnica para a OpenAI não bloquear
             
         return vectorstore.as_retriever(search_kwargs={"k": 3})
     except Exception as e:
@@ -57,8 +65,6 @@ def setup_knowledge_base():
 retriever = setup_knowledge_base()
 
 if retriever:
-    st.sidebar.success("Documentos carregados!" if lang == "Português" else "Documents loaded!")
-    
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -66,7 +72,7 @@ if retriever:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    if prompt := st.chat_input("Pergunte algo..."):
+    if prompt := st.chat_input(input_l):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -74,16 +80,16 @@ if retriever:
         with st.chat_message("assistant"):
             llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
             
-            footer = "\n\n---\n*Visite: [aepg.pt](https://aepg.pt/)*"
-            template = "És um assistente do AEPG. Responde em {language} usando: {context}. Pergunta: {question}"
+            template = """És um assistente do AEPG. Responde em {language} usando o contexto: {context}. 
+            Se não souberes, diz que não encontras nos documentos. Pergunta: {question}"""
             
             rag_prompt = ChatPromptTemplate.from_template(template)
             chain = ({"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang} 
                      | rag_prompt | llm | StrOutputParser())
             
             response = chain.invoke(prompt)
-            full_res = response + footer
-            st.markdown(full_res)
-            st.session_state.messages.append({"role": "assistant", "content": full_res})
+            final_answer = response + footer_msg
+            st.markdown(final_answer)
+            st.session_state.messages.append({"role": "assistant", "content": final_answer})
 else:
-    st.warning("Nenhum PDF encontrado ou erro no processamento.")
+    st.warning("⚠️ Carregue os PDFs no GitHub ou verifique a sua chave API.")
