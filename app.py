@@ -57,7 +57,7 @@ def setup_knowledge_base():
             vectorstore.add_documents(docs_chunks[i:i+30])
             time.sleep(1) # Pausa técnica para a OpenAI não bloquear
             
-        return vectorstore.as_retriever(search_kwargs={"k": 3})
+        return vectorstore.as_retriever(search_kwargs={"k": 6})
     except Exception as e:
         st.error(f"Erro na OpenAI: {e}")
         return None
