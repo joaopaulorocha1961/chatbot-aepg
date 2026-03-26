@@ -1,7 +1,3 @@
-
-
-Fichiro: app.py
-Python
 import streamlit as st
 import os
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
