@@ -115,7 +115,11 @@ if retriever:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            llm = ChatOpenAI(model="gpt-3.5-turbo-16k", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
+            llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
+
+            # 1. Obter o contexto dos documentos manualmente para evitar erro de concorrência
+            docs = retriever.get_relevant_documents(prompt)
+            context_text = "\n\n".join([doc.page_content for doc in docs])
             
             template = """És o assistente oficial do Agrupamento de Escolas Paulo da Gama.
             Utiliza o contexto fornecido (PDFs e Site) para responder de forma completa.
@@ -126,12 +130,18 @@ if retriever:
             Pergunta: {question}
             """
             
-            rag_prompt = ChatPromptTemplate.from_template(template)
-            chain = ({"context": retriever, "question": RunnablePassthrough(), "language": lambda x: lang} 
-                     | rag_prompt | llm | StrOutputParser())
+            # 3. Execução direta (mais robusta contra erros de biblioteca)
+            messages = rag_prompt.format_messages(
+                context=context_text,
+                question=prompt,
+                language=lang_cfg["prompt_lang"]
+            )
             
-            response = chain.invoke(prompt)
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            response = llm.invoke(messages)
+            answer = response.content
+            
+            full_res = answer + lang_cfg["footer"]
+            st.markdown(full_res)
+            st.session_state.messages.append({"role": "assistant", "content": full_res}
 else:
     st.warning("A preparar o conhecimento... Verifique os ficheiros e a chave API.")
