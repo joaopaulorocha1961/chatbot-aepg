@@ -14,7 +14,7 @@ st.set_page_config(page_title="Assistente Virtual AEPG", page_icon="🏫", layou
 # --- CONFIGURAÇÃO DE IDIOMAS (TRILINGUE) ---
 languages = {
     "Português (PT)": {
-        "title": "Assistente Virtual - AE Paulo da Gama",
+        "title": "Assistente Virtual - AEPG",
         "input": "Como posso ajudar?",
         "loading": "A ler documentos e site...",
         "footer": "\n\n---\n*Site oficial: [aepg.pt](https://aepg.pt/)*",
