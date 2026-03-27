@@ -142,6 +142,6 @@ if retriever:
             
             full_res = answer + lang_cfg["footer"]
             st.markdown(full_res)
-            st.session_state.messages.append({"role": "assistant", "content": full_res}
+            st.session_state.messages.append({"role": "assistant", "content": full_res})
 else:
     st.warning("A preparar o conhecimento... Verifique os ficheiros e a chave API.")
