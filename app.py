@@ -50,7 +50,7 @@ st.title(lang_cfg["title"])
 
 # Ajuste de Direção para Urdu (RTL)
 if lang_cfg["rtl"]:
-    st.markdown("""<style> .stChatMessage { direction: rtl; text-align: right; } </style>""", unsafe_allow_测_html=True)
+    st.markdown("""<style> .stChatMessage { direction: rtl; text-align: right; } </style>""", unsafe_allow_html=True)
 
 if "OPENAI_API_KEY" not in st.secrets:
     st.error("Falta a OPENAI_API_KEY nos Secrets.")
