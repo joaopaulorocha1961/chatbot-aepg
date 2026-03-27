@@ -109,7 +109,7 @@ if retriever:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-  if prompt := st.chat_input(lang_cfg["input"]):
+    if prompt := st.chat_input(lang_cfg["input"]):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
