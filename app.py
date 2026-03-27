@@ -109,28 +109,34 @@ if retriever:
         with st.chat_message(m["role"]):
             st.markdown(m["content"])
 
-    if prompt := st.chat_input("Pergunte-me algo sobre o AEPG..."):
+  if prompt := st.chat_input(lang_cfg["input"]):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=st.secrets["OPENAI_API_KEY"], temperature=0)
-
-            # 1. Obter o contexto dos documentos manualmente para evitar erro de concorrência
-            docs = retriever.get_relevant_documents(prompt)
+            # Usamos o modelo gpt-3.5-turbo (ou gpt-4o-mini se preferires)
+            llm = ChatOpenAI(
+                model="gpt-3.5-turbo", 
+                api_key=st.secrets["OPENAI_API_KEY"], 
+                temperature=0
+            )
+            
+            # 1. CORREÇÃO: Usar .invoke() em vez de .get_relevant_documents()
+            docs = retriever.invoke(prompt)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
-            template = """És o assistente oficial do Agrupamento de Escolas Paulo da Gama.
-            Utiliza o contexto fornecido (PDFs e Site) para responder de forma completa.
-            Se a resposta não estiver clara, sugere consultar o site aepg.pt ou contactar a escola.
-            Responde sempre em {language}.
-
-            Contexto: {context}
-            Pergunta: {question}
+            # 2. Definir o Prompt
+            template = """You are the official assistant for Agrupamento de Escolas Paulo da Gama (AEPG).
+            Use the context to answer accurately in {language}.
+            
+            Context: {context}
+            Question: {question}
             """
             
-            # 3. Execução direta (mais robusta contra erros de biblioteca)
+            rag_prompt = ChatPromptTemplate.from_template(template)
+            
+            # 3. Formatar e chamar o LLM
             messages = rag_prompt.format_messages(
                 context=context_text,
                 question=prompt,
@@ -140,6 +146,7 @@ if retriever:
             response = llm.invoke(messages)
             answer = response.content
             
+            # 4. Mostrar Resposta com o Rodapé e RTL se for Urdu
             full_res = answer + lang_cfg["footer"]
             st.markdown(full_res)
             st.session_state.messages.append({"role": "assistant", "content": full_res})
