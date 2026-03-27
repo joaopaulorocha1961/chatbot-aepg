@@ -11,12 +11,46 @@ from langchain_core.output_parsers import StrOutputParser
 
 st.set_page_config(page_title="Assistente Virtual AEPG", page_icon="🏫", layout="centered")
 
+# --- CONFIGURAÇÃO DE IDIOMAS (TRILINGUE) ---
+languages = {
+    "Português (PT)": {
+        "title": "Assistente Virtual - AE Paulo da Gama",
+        "input": "Como posso ajudar?",
+        "loading": "A ler documentos e site...",
+        "footer": "\n\n---\n*Site oficial: [aepg.pt](https://aepg.pt/)*",
+        "prompt_lang": "Portuguese",
+        "rtl": False
+    },
+    "English (UK)": {
+        "title": "AEPG Virtual Assistant",
+        "input": "How can I help you?",
+        "loading": "Reading documents and website...",
+        "footer": "\n\n---\n*Official website: [aepg.pt](https://aepg.pt/)*",
+        "prompt_lang": "English",
+        "rtl": False
+    },
+    "Urdu (اردو)": {
+        "title": "ورچوئل اسسٹنٹ - اے ای پالو دا گاما",
+        "input": "میں آپ کی کیسے مدد کر سکتا ہوں؟",
+        "loading": "...دستاویزات اور ویب سائٹ پڑھ رہا ہے",
+        "footer": "\n\n---\n*سرکاری ویب سائٹ: [aepg.pt](https://aepg.pt/)*",
+        "prompt_lang": "Urdu",
+        "rtl": True
+    }
+}
+
 if os.path.exists("LogoAEPG.png"): # Substitui pelo nome real do teu ficheiro
     st.sidebar.image("LogoAEPG.png", use_container_width=True)
 
-lang = st.sidebar.selectbox("Idioma / Language", ["Português", "English"])
-t = "Assistente Virtual - AE Paulo da Gama" if lang == "Português" else "AEPG Assistant"
-st.title(t)
+# Seletor na barra lateral
+selected_lang = st.sidebar.selectbox("Idioma / Language / زبان", list(languages.keys()))
+lang_cfg = languages[selected_lang]
+
+st.title(lang_cfg["title"])
+
+# Ajuste de Direção para Urdu (RTL)
+if lang_cfg["rtl"]:
+    st.markdown("""<style> .stChatMessage { direction: rtl; text-align: right; } </style>""", unsafe_allow_测_html=True)
 
 if "OPENAI_API_KEY" not in st.secrets:
     st.error("Falta a OPENAI_API_KEY nos Secrets.")
